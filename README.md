@@ -91,4 +91,4 @@ is the behavior this tool exists to avoid.
 
 ## License
 
-MIT
+[Apache-2.0](LICENSE)
