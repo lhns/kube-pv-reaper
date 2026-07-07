@@ -1,0 +1,12 @@
+apiVersion: v2
+name: kube-pv-reaper
+description: >-
+  Clone-on-delete reclaimer for CSI PersistentVolumes: deleting a PVC keeps the
+  volume (reclaimPolicy Retain), deleting the PV reclaims it.
+type: application
+# version and appVersion are overridden by CI (sha-<short> on main, <semver> on tags).
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/lhns/kube-pv-reaper
+sources:
+  - https://github.com/lhns/kube-pv-reaper

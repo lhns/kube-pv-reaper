@@ -1,0 +1,33 @@
+image:
+  repository: ghcr.io/lhns/kube-pv-reaper
+  # Defaults to the chart's appVersion (the image built alongside this chart).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# CSI driver to manage. Empty string = all CSI PVs in the cluster.
+# Scope it to one driver, e.g. "cephfs.csi.ceph.com", to be safe.
+driver: ""
+
+# Finalizer key placed on managed Retain PVs (used to intercept PV deletion).
+finalizer: pv-reaper.lhns.de/reclaim-on-delete
+
+# Name prefix for the disposable reclaim clones.
+clonePrefix: "reclaim-"
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  create: true
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

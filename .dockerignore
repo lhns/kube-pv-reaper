@@ -1,0 +1,6 @@
+chart/
+.github/
+*.md
+LICENSE
+.gitignore
+.git/
