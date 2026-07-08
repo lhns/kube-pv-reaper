@@ -46,7 +46,7 @@ retry so a PV can never get stuck `Terminating`.
 helm install pv-reaper oci://ghcr.io/lhns/charts/kube-pv-reaper \
   --namespace pv-reaper --create-namespace \
   --version <version> \
-  --set driver=cephfs.csi.ceph.com
+  --set 'drivers={cephfs.csi.ceph.com}'   # or {cephfs.csi.ceph.com,rbd.csi.ceph.com}
 ```
 
 Or with Flux — an `OCIRepository` + `HelmRelease` pointing at
@@ -66,9 +66,11 @@ is the behavior this tool exists to avoid.
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `driver` | `""` | CSI driver to manage. Empty = **all** CSI PVs. Set to e.g. `cephfs.csi.ceph.com` to scope. |
+| `drivers` | `[]` | CSI driver(s) to manage (list). Empty = **all** CSI PVs. e.g. `[cephfs.csi.ceph.com, rbd.csi.ceph.com]`. |
+| `driver` | `""` | Deprecated single-driver alias; honored only when `drivers` is empty. |
 | `finalizer` | `pv-reaper.lhns.de/reclaim-on-delete` | Finalizer placed on managed `Retain` PVs. |
 | `clonePrefix` | `reclaim-` | Name prefix for reclaim clones. |
+| `nameOverride` / `fullnameOverride` | `""` | Override the generated resource names (e.g. `fullnameOverride: pv-reaper`). |
 | `image.repository` / `image.tag` | `ghcr.io/lhns/kube-pv-reaper` / chart appVersion | Container image. |
 
 ## Caveats
