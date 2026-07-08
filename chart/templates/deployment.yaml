@@ -27,7 +27,8 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: DRIVER
-              value: {{ .Values.driver | quote }}
+              # `drivers` (list) preferred; falls back to the singular `driver`.
+              value: {{ if .Values.drivers }}{{ join "," .Values.drivers | quote }}{{ else }}{{ .Values.driver | default "" | quote }}{{ end }}
             - name: FINALIZER
               value: {{ .Values.finalizer | quote }}
             - name: CLONE_PREFIX

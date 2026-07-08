@@ -16,13 +16,13 @@
 # decoupled, so the original can go away immediately. Event-driven via a watch.
 #
 # Config (env):
-#   DRIVER        CSI driver to manage; empty = all CSI PVs      (default: "")
+#   DRIVER        CSI driver(s) to manage, comma-separated; empty = all (default: "")
 #   FINALIZER     finalizer placed on managed Retain PVs
 #                 (default: pv-reaper.lhns.de/reclaim-on-delete)
 #   CLONE_PREFIX  name prefix for reclaim clones                 (default: reclaim-)
 set -u
 FINALIZER="${FINALIZER:-pv-reaper.lhns.de/reclaim-on-delete}"
-DRIVER="${DRIVER:-}"
+DRIVER="$(printf '%s' "${DRIVER:-}" | tr -d '[:space:]')"  # comma list; tolerate "a, b"
 CLONE_PREFIX="${CLONE_PREFIX:-reclaim-}"
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) kube-pv-reaper: $*"; }
 
@@ -61,7 +61,9 @@ reconcile() {
   pv="$1"
   d=$(printf '%s' "$pv" | jq -r '.spec.csi.driver // ""')
   [ -n "$d" ] || return 0                              # not a CSI PV
-  [ -z "$DRIVER" ] || [ "$d" = "$DRIVER" ] || return 0 # scoped to another driver
+  if [ -n "$DRIVER" ]; then                            # scoped to a driver (comma list)?
+    case ",$DRIVER," in *",$d,"*) : ;; *) return 0 ;; esac
+  fi
   name=$(printf '%s' "$pv" | jq -r '.metadata.name')
   case "$name" in "${CLONE_PREFIX}"*) return 0 ;; esac # never manage our own clones
   policy=$(printf '%s' "$pv" | jq -r '.spec.persistentVolumeReclaimPolicy')

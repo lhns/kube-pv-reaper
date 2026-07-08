@@ -11,8 +11,13 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# CSI driver to manage. Empty string = all CSI PVs in the cluster.
-# Scope it to one driver, e.g. "cephfs.csi.ceph.com", to be safe.
+# CSI driver(s) to manage. Empty = all CSI PVs in the cluster; scope it to be safe.
+# Prefer the list form (one or many):
+#   drivers:
+#     - cephfs.csi.ceph.com
+#     - rbd.csi.ceph.com
+# `driver` (singular string) is still honored when `drivers` is empty (back-compat).
+drivers: []
 driver: ""
 
 # Finalizer key placed on managed Retain PVs (used to intercept PV deletion).

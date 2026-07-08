@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-08
+### Added
+- Manage multiple CSI drivers. The chart now takes a `drivers` list (joined into
+  the comma-separated `DRIVER` env) and `reaper.sh` matches each PV's driver
+  against it. The singular `driver` string is still honored when `drivers` is
+  empty (back-compat), and empty still means all CSI PVs. Stray spaces in the
+  list are tolerated.
+
 ## [0.1.2] - 2026-07-08
 ### Fixed
 - Chart: the fullname template now honors `fullnameOverride`/`nameOverride` and
