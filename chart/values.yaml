@@ -1,3 +1,10 @@
+# Override the generated resource names. nameOverride replaces the chart name in
+# `<release>-<name>`; fullnameOverride replaces the whole name. e.g. with a
+# release named "pv-reaper", set fullnameOverride: pv-reaper for a clean
+# `pv-reaper` instead of `pv-reaper-kube-pv-reaper`.
+nameOverride: ""
+fullnameOverride: ""
+
 image:
   repository: ghcr.io/lhns/kube-pv-reaper
   # Defaults to the chart's appVersion (the image built alongside this chart).

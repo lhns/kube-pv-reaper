@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-08
+### Fixed
+- Chart: the fullname template now honors `fullnameOverride`/`nameOverride` and
+  de-dupes when the release name already contains the chart name, matching the
+  standard Helm convention. Previously it blindly produced
+  `<release>-kube-pv-reaper` (e.g. the stuttering `pv-reaper-kube-pv-reaper`);
+  set `fullnameOverride: pv-reaper` for a clean `pv-reaper`.
+
 ## [0.1.1] - 2026-07-08
 ### Fixed
 - Handle `SIGTERM`/`SIGINT` promptly. The watch loop now runs as a backgrounded

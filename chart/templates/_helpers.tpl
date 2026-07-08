@@ -1,7 +1,18 @@
-{{- define "kube-pv-reaper.name" -}}kube-pv-reaper{{- end -}}
+{{- define "kube-pv-reaper.name" -}}
+{{- default "kube-pv-reaper" .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 
 {{- define "kube-pv-reaper.fullname" -}}
-{{- printf "%s-%s" .Release.Name (include "kube-pv-reaper.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := include "kube-pv-reaper.name" . -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "kube-pv-reaper.labels" -}}
