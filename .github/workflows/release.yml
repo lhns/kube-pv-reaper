@@ -65,9 +65,10 @@ jobs:
         run: |
           VER="${GITHUB_REF_NAME#v}"
           # Use this version's CHANGELOG.md section as the release body.
+          # index()-based (literal) to avoid regex bracket-escaping pitfalls.
           awk -v v="$VER" '
-            $0 ~ ("^## \\[" v "\\]") { p=1; next }
-            p && /^## \[/ { exit }
+            index($0, "## [" v "]") == 1 { p=1; next }
+            p && index($0, "## [") == 1 { exit }
             p { print }
           ' CHANGELOG.md > relnotes.md
           if [ -s relnotes.md ]; then
