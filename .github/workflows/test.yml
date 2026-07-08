@@ -1,0 +1,48 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --build-arg TARGETARCH=amd64 -t kube-pv-reaper:test .
+
+      - name: SIGTERM is handled promptly (no PID-1 hang)
+        run: |
+          # Fake kubectl that blocks on the watch like a live cluster would, so
+          # the reaper is genuinely stuck in `kubectl get pv --watch` when signaled
+          # (the case the plain PID-1 shell used to ignore SIGTERM in).
+          cat > fake-kubectl <<'EOF'
+          #!/bin/sh
+          case "$*" in
+            *"get pv --watch"*) exec sleep 3600 ;;
+            *) echo '{}' ;;
+          esac
+          EOF
+          chmod 0755 fake-kubectl
+
+          docker run -d --name reaper \
+            -v "$PWD/fake-kubectl:/usr/local/bin/kubectl:ro" \
+            kube-pv-reaper:test
+          sleep 3   # let it enter the watch
+
+          start=$(date +%s)
+          docker stop -t 15 reaper >/dev/null       # SIGTERM, then SIGKILL after 15s
+          elapsed=$(( $(date +%s) - start ))
+
+          echo "--- container logs ---"; docker logs reaper 2>&1 | tail -3
+          docker rm reaper >/dev/null
+          echo "stopped in ${elapsed}s"
+          if [ "$elapsed" -le 5 ]; then
+            echo "PASS: SIGTERM handled promptly"
+          else
+            echo "FAIL: took ${elapsed}s — SIGTERM ignored (PID-1 hang)"
+            exit 1
+          fi

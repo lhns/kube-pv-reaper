@@ -26,6 +26,12 @@ DRIVER="${DRIVER:-}"
 CLONE_PREFIX="${CLONE_PREFIX:-reclaim-}"
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) kube-pv-reaper: $*"; }
 
+# Exit promptly on SIGTERM/SIGINT. As PID 1 a shell has no default signal
+# disposition, so without this it would ignore SIGTERM and hang until SIGKILL on
+# every drain/rollout. The watch loop below is backgrounded + `wait`ed so the
+# signal actually interrupts (a plain foreground loop wouldn't).
+trap 'exit 0' TERM INT
+
 # Finalizer edits re-read the live object and retry, so a stale watch object or
 # a concurrent change can never leave a PV stuck Terminating.
 add_finalizer() { # $1=pv
@@ -108,12 +114,17 @@ reconcile() {
 }
 
 log "started (clone-on-delete, watch-based); driver='${DRIVER:-<all CSI>}' finalizer=$FINALIZER"
-while true; do
-  # --watch emits every existing PV first (as ADDED) then streams changes;
-  # --output-watch-events wraps each as {type,object}. No polling interval.
-  kubectl get pv --watch --output-watch-events=true -o json 2>/dev/null \
-    | jq -c '.object' 2>/dev/null \
-    | while IFS= read -r pv; do reconcile "$pv"; done
-  log "watch stream ended; reconnecting in 2s"
-  sleep 2
-done
+# Backgrounded + wait so SIGTERM interrupts `wait` and the trap fires; PID 1
+# exiting tears down the orphaned kubectl/jq children.
+{
+  while true; do
+    # --watch emits every existing PV first (as ADDED) then streams changes;
+    # --output-watch-events wraps each as {type,object}. No polling interval.
+    kubectl get pv --watch --output-watch-events=true -o json 2>/dev/null \
+      | jq -c '.object' 2>/dev/null \
+      | while IFS= read -r pv; do reconcile "$pv"; done
+    log "watch stream ended; reconnecting in 2s"
+    sleep 2
+  done
+} &
+wait
