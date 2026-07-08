@@ -63,7 +63,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
-            kube-pv-reaper-*.tgz
+          VER="${GITHUB_REF_NAME#v}"
+          # Use this version's CHANGELOG.md section as the release body.
+          awk -v v="$VER" '
+            $0 ~ ("^## \\[" v "\\]") { p=1; next }
+            p && /^## \[/ { exit }
+            p { print }
+          ' CHANGELOG.md > relnotes.md
+          if [ -s relnotes.md ]; then
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" \
+              --notes-file relnotes.md kube-pv-reaper-*.tgz
+          else
+            echo "no CHANGELOG entry for ${VER}; using generated notes" >&2
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" \
+              --generate-notes kube-pv-reaper-*.tgz
+          fi
