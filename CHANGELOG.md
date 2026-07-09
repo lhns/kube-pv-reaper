@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.4] - 2026-07-09
 ### Added
 - Helm `pre-delete` hook that strips the reaper's finalizer from managed PVs on
   uninstall, so none are left stuck `Terminating` once the reaper is gone. It
