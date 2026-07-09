@@ -78,13 +78,23 @@ is the behavior this tool exists to avoid.
 - **The reaper must be running to delete a managed PV.** It uses a finalizer, so
   `kubectl delete pv` on a managed PV hangs in `Terminating` until the reaper
   processes it. If it's down, deletions wait — data is never lost.
-- **Before uninstalling**, strip the finalizer from managed PVs or they become
-  un-deletable:
-  ```sh
-  for pv in $(kubectl get pv -o json | jq -r '.items[] | select(.metadata.finalizers[]? == "pv-reaper.lhns.de/reclaim-on-delete") | .metadata.name'); do
-    kubectl patch pv "$pv" --type merge -p '{"metadata":{"finalizers":null}}'
-  done
-  ```
+- **Uninstalling is handled for you.** A Helm `pre-delete` hook (the reaper's own
+  image, run as `reaper.sh strip-finalizers`) strips the finalizer from every
+  managed PV so nothing is left stuck `Terminating`. It runs *before* the
+  ServiceAccount/RBAC are torn down, and is built to **never block the uninstall**:
+  it exits `0` no matter what (internal timeout, no retries), so even if it can't
+  reach the API the uninstall still proceeds. Disable it with
+  `--set cleanupHook.enabled=false`.
+  - **Under Flux**, the hook runs on `HelmRelease` deletion. Make sure
+    `spec.uninstall.timeout` exceeds `cleanupHook.activeDeadlineSeconds` (default
+    `120s`). Escape hatch if a hook ever wedges: `spec.uninstall.disableHooks: true`.
+  - **Manual fallback** — only needed if you uninstalled with hooks disabled (or
+    the hook couldn't reach the API):
+    ```sh
+    for pv in $(kubectl get pv -o json | jq -r '.items[] | select(.metadata.finalizers[]? == "pv-reaper.lhns.de/reclaim-on-delete") | .metadata.name'); do
+      kubectl patch pv "$pv" --type merge -p '{"metadata":{"finalizers":null}}'
+    done
+    ```
 
 ## Releases
 

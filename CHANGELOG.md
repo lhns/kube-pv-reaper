@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- Helm `pre-delete` hook that strips the reaper's finalizer from managed PVs on
+  uninstall, so none are left stuck `Terminating` once the reaper is gone. It
+  runs the reaper image as `reaper.sh strip-finalizers` (reusing the existing
+  ServiceAccount/RBAC, which are still present during `pre-delete`) and is
+  designed to **never block the uninstall**: it exits `0` regardless (internal
+  `timeout` + `|| true`, `backoffLimit: 0`), degrading to a no-op if it can't
+  reach the API. Toggle with `cleanupHook.enabled`; tune
+  `cleanupHook.timeoutSeconds` / `activeDeadlineSeconds`.
+- `reaper.sh strip-finalizers` one-shot mode powering the hook.
+- Architecture Decision Records under `docs/adr/`, reconstructing the project's
+  design decisions (clone-on-delete, finalizer interception, shell/kubectl
+  implementation, PID-1 signal handling, driver scoping, single-replica model,
+  and distribution).
 
 ## [0.1.3] - 2026-07-08
 ### Added

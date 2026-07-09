@@ -115,6 +115,24 @@ reconcile() {
   fi
 }
 
+# One-shot cleanup mode, invoked by the Helm pre-delete hook as
+# `reaper.sh strip-finalizers`. Removes our finalizer from every managed PV so
+# that uninstalling the reaper can't leave PVs wedged in Terminating. It is
+# strictly best-effort and ALWAYS exits 0 — a pre-delete hook that fails would
+# block `helm uninstall`, so this must never return non-zero, even when the API
+# is unreachable or a patch keeps failing.
+if [ "${1:-}" = "strip-finalizers" ]; then
+  log "strip-finalizers: removing $FINALIZER from managed PVs (best-effort)"
+  names=$(kubectl get pv -o json 2>/dev/null \
+    | jq -r --arg f "$FINALIZER" '.items[] | select(any((.metadata.finalizers // [])[]; . == $f)) | .metadata.name' 2>/dev/null) || names=""
+  for n in $names; do
+    remove_finalizer "$n" && log "strip-finalizers: stripped $n" \
+      || log "strip-finalizers: WARN could not strip $n (continuing)"
+  done
+  log "strip-finalizers: done"
+  exit 0
+fi
+
 log "started (clone-on-delete, watch-based); driver='${DRIVER:-<all CSI>}' finalizer=$FINALIZER"
 # Backgrounded + wait so SIGTERM interrupts `wait` and the trap fires; PID 1
 # exiting tears down the orphaned kubectl/jq children.

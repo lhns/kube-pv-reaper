@@ -17,3 +17,4 @@ describes operationally.
 5. [0005 — Driver scoping via a comma-separated list (empty = all CSI)](0005-driver-scoping-list.md)
 6. [0006 — Single replica + idempotent reconcile instead of leader election](0006-single-replica-idempotent.md)
 7. [0007 — Distribution: multi-arch image + Helm chart to GHCR, CHANGELOG-driven releases](0007-distribution-image-and-chart.md)
+8. [0008 — Automate finalizer cleanup on uninstall via a pre-delete hook](0008-uninstall-finalizer-cleanup-hook.md)

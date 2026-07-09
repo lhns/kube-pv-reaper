@@ -1,0 +1,55 @@
+{{- if .Values.cleanupHook.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kube-pv-reaper.fullname" . }}-strip-finalizers
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-pv-reaper.labels" . | nindent 4 }}
+  annotations:
+    # Runs on `helm uninstall` (and Flux HelmRelease deletion) BEFORE the release's
+    # ServiceAccount/RBAC are removed, so it can still patch PVs. It strips our
+    # finalizer from managed PVs so none are left stuck Terminating once the reaper
+    # is gone. Designed to NEVER block the uninstall — see the safety notes below.
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+spec:
+  # No retries: a backing-off Job would only widen the uninstall window.
+  backoffLimit: 0
+  # Backstop for the pathological "pod can't be scheduled/pulled" case. The strip
+  # itself finishes in seconds and the container exits 0 well before this fires, so
+  # in normal operation the Job Completes and never hits the deadline. Keep your
+  # Flux HelmRelease spec.uninstall.timeout comfortably above this.
+  activeDeadlineSeconds: {{ .Values.cleanupHook.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 120
+  template:
+    metadata:
+      labels:
+        {{- include "kube-pv-reaper.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kube-pv-reaper.serviceAccountName" . }}
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: strip-finalizers
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          # IfNotPresent: the reaper image is already on the node (the Deployment
+          # runs it), so the hook pod starts without a registry round-trip.
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Belt-and-suspenders. reaper.sh's strip mode is already best-effort and
+          # exits 0, but wrap it in `timeout … || true; exit 0` so that even a hung
+          # API call is bounded and NOTHING can produce a non-zero exit that would
+          # fail the hook and block the uninstall.
+          command: ["/bin/sh", "-c"]
+          args:
+            - 'timeout {{ .Values.cleanupHook.timeoutSeconds }} /bin/sh /usr/local/bin/reaper.sh strip-finalizers || true; exit 0'
+          env:
+            - name: FINALIZER
+              value: {{ .Values.finalizer | quote }}
+            - name: CLONE_PREFIX
+              value: {{ .Values.clonePrefix | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

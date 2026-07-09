@@ -26,6 +26,22 @@ finalizer: pv-reaper.lhns.de/reclaim-on-delete
 # Name prefix for the disposable reclaim clones.
 clonePrefix: "reclaim-"
 
+# Helm pre-delete hook. On uninstall it strips the reaper's finalizer from every
+# managed PV so nothing is left stuck Terminating once the reaper is gone. It is
+# best-effort and designed to NEVER block the uninstall: the container exits 0 no
+# matter what (internal timeout + `|| true`, no retries), so if it can't reach the
+# API the uninstall still proceeds — fall back to the manual strip loop in the
+# README. Disable entirely with `cleanupHook.enabled: false`.
+cleanupHook:
+  enabled: true
+  # Internal timeout for the strip, in seconds. When it fires the container still
+  # exits 0, so a hung API call can't stall the uninstall.
+  timeoutSeconds: 45
+  # Job-level backstop, in seconds. Only bites if the hook pod can't be
+  # scheduled/pulled; keep it comfortably above timeoutSeconds, and below your
+  # Flux HelmRelease spec.uninstall.timeout.
+  activeDeadlineSeconds: 120
+
 serviceAccount:
   create: true
   name: ""
