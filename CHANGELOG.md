@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-21
+### Fixed
+- Only manage **dynamically-provisioned** PVs (those with the standard
+  `pv.kubernetes.io/provisioned-by` annotation). Static / pre-provisioned PVs are
+  no longer given the finalizer or cloned on delete: their `volumeHandle` isn't a
+  provisioner-owned ID, so the reclaim clone's `DeleteVolume` would fail (e.g.
+  ceph-csi `string underflow`, leaving a stuck `Released` clone spamming
+  `VolumeFailedDelete`) or wrongly destroy shared backend data. A static PV found
+  carrying the finalizer from an older build is self-healed (finalizer stripped
+  in steady state; released without cloning on delete). See ADR 0009.
+
 ## [0.1.4] - 2026-07-09
 ### Added
 - Helm `pre-delete` hook that strips the reaper's finalizer from managed PVs on

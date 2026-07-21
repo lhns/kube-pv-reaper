@@ -57,6 +57,16 @@ remove_finalizer() { # $1=pv
   return 1
 }
 
+# True if the PV was dynamically provisioned by a CSI driver. The external
+# provisioner stamps `pv.kubernetes.io/provisioned-by` on every volume it
+# creates; static / pre-provisioned PVs never carry it. This is the one signal
+# that decides whether a volume is ours to reclaim (see the note in reconcile).
+is_dynamic() { # $1=pv json
+  printf '%s' "$1" \
+    | jq -e '((.metadata.annotations // {})["pv.kubernetes.io/provisioned-by"] // "") != ""' \
+      >/dev/null 2>&1
+}
+
 reconcile() {
   pv="$1"
   d=$(printf '%s' "$pv" | jq -r '.spec.csi.driver // ""')
@@ -73,10 +83,27 @@ reconcile() {
   else
     hasfin=no
   fi
+  # Only dynamically-provisioned volumes are ours to reclaim. A static /
+  # pre-provisioned PV points at backend storage the admin created out-of-band
+  # (an existing CephFS subtree, RBD image, NFS export, ...); its volumeHandle is
+  # not a provisioner-owned ID, so a Delete clone's DeleteVolume would fail (e.g.
+  # ceph-csi "string underflow") or, worse, destroy shared data. Skip them —
+  # consistent with the reclaim itself, which leans on the provisioner's own
+  # DeleteVolume (only meaningful for volumes it provisioned).
+  if is_dynamic "$pv"; then dyn=yes; else dyn=no; fi
 
   if [ -n "$delts" ]; then
-    # original PV is being deleted -> hand reclamation to a Delete clone
+    # original PV is being deleted
     [ "$hasfin" = yes ] || return 0
+    if [ "$dyn" = no ]; then
+      # static PV carrying our finalizer (e.g. added by an older build) -> just
+      # release it; the native Retain delete then touches no backend storage.
+      remove_finalizer "$name" \
+        && log "$name: static/pre-provisioned; released finalizer without reclaim" \
+        || log "$name: WARN finalizer removal failed after retries"
+      return 0
+    fi
+    # dynamic -> hand reclamation to a Delete clone
     clone="${CLONE_PREFIX}${name}"
     if kubectl get pv "$clone" >/dev/null 2>&1; then
       log "$name: reclaim clone $clone already present"
@@ -107,7 +134,18 @@ reconcile() {
       log "$name: WARN finalizer removal failed after retries"
     fi
   else
-    # steady state -> ensure Retain PVs carry our finalizer so we can intercept
+    # steady state
+    if [ "$dyn" = no ]; then
+      # never manage static PVs; strip a stray finalizer an older build may have
+      # added so their eventual delete is native and can't wedge on a bad clone.
+      if [ "$hasfin" = yes ]; then
+        remove_finalizer "$name" \
+          && log "$name: static/pre-provisioned; removed stray finalizer" \
+          || log "$name: WARN finalizer removal failed after retries"
+      fi
+      return 0
+    fi
+    # dynamic -> ensure Retain PVs carry our finalizer so we can intercept delete
     if [ "$policy" = "Retain" ] && [ "$hasfin" = "no" ]; then
       add_finalizer "$name" \
         && log "$name: added finalizer" || log "$name: WARN finalizer add failed after retries"
@@ -132,6 +170,10 @@ if [ "${1:-}" = "strip-finalizers" ]; then
   log "strip-finalizers: done"
   exit 0
 fi
+
+# Tests source this file with REAPER_SOURCE_ONLY=1 to exercise reconcile()/helpers
+# against fabricated PV JSON without starting the watch loop below.
+[ "${REAPER_SOURCE_ONLY:-}" = "1" ] && return 0 2>/dev/null || true
 
 log "started (clone-on-delete, watch-based); driver='${DRIVER:-<all CSI>}' finalizer=$FINALIZER"
 # Backgrounded + wait so SIGTERM interrupts `wait` and the trap fires; PID 1

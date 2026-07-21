@@ -40,6 +40,19 @@ the brief window where two PVs share one handle is harmless. It's event-driven
 (a `kubectl get pv --watch` stream, no polling), and finalizer edits re-read and
 retry so a PV can never get stuck `Terminating`.
 
+### What it manages
+
+Only **dynamically-provisioned** CSI PVs — those carrying the standard
+`pv.kubernetes.io/provisioned-by` annotation the external-provisioner sets on
+volumes it created. **Static / pre-provisioned PVs are skipped**: their
+`volumeHandle` points at storage the admin created out-of-band (an existing
+CephFS subtree, RBD image, NFS export, …), so a reclaim clone's `DeleteVolume`
+would fail or wrongly destroy shared data. This is the same set of volumes the
+provisioner's own `DeleteVolume` can act on — which is exactly what the reclaim
+relies on. (A static PV that still carries the finalizer from an older build is
+self-healed: stripped in steady state, released without cloning on delete.) See
+[ADR 0009](docs/adr/0009-dynamically-provisioned-only.md).
+
 ## Install
 
 ```sh

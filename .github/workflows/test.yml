@@ -46,3 +46,61 @@ jobs:
             echo "FAIL: took ${elapsed}s — SIGTERM ignored (PID-1 hang)"
             exit 1
           fi
+
+  reconcile-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reconcile manages dynamic PVs only, never reclaims static ones
+        run: |
+          set -eu
+          # Fake kubectl: `get -o json` returns the fixture PV; a bare `get pv`
+          # (clone existence probe) is "not found"; patch/create are recorded.
+          mkdir -p /tmp/bin
+          cat > /tmp/bin/kubectl <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            get)    case "$*" in *"-o json"*) cat "$PV_JSON" ;; *) exit 1 ;; esac ;;
+            patch)  echo "PATCH $3"  >> "$ACTIONS" ;;
+            create) echo "CREATE $(cat | jq -r '.metadata.name')" >> "$ACTIONS" ;;
+            *) : ;;
+          esac
+          EOF
+          chmod +x /tmp/bin/kubectl
+          export PATH="/tmp/bin:$PATH"
+
+          # Load reconcile()/helpers without starting the watch loop.
+          export REAPER_SOURCE_ONLY=1
+          . ./reaper.sh
+
+          FIN=pv-reaper.lhns.de/reclaim-on-delete
+          DYN='{"metadata":{"name":"dyn","annotations":{"pv.kubernetes.io/provisioned-by":"rbd.csi.ceph.com"}},"spec":{"csi":{"driver":"rbd.csi.ceph.com","volumeHandle":"0001-real"},"persistentVolumeReclaimPolicy":"Retain","claimRef":{"apiVersion":"v1","kind":"PersistentVolumeClaim","namespace":"x","name":"c","uid":"u"},"storageClassName":"ceph-rbd","capacity":{"storage":"1Gi"},"accessModes":["ReadWriteOnce"],"volumeMode":"Filesystem"}}'
+          STAT='{"metadata":{"name":"stat"},"spec":{"csi":{"driver":"cephfs.csi.ceph.com","volumeHandle":"my-static"},"persistentVolumeReclaimPolicy":"Retain","claimRef":{"apiVersion":"v1","kind":"PersistentVolumeClaim","namespace":"x","name":"c","uid":"u"},"storageClassName":"","capacity":{"storage":"1Gi"},"accessModes":["ReadOnlyMany"],"volumeMode":"Filesystem"}}'
+          withfin() { printf '%s' "$1" | jq -c --arg f "$FIN" '.metadata.finalizers=[$f]'; }
+          deleting() { printf '%s' "$1" | jq -c '.metadata.deletionTimestamp="2026-01-01T00:00:00Z"'; }
+
+          run() { # $1=pv-json -> prints recorded actions
+            PV_JSON=$(mktemp); ACTIONS=$(mktemp); export PV_JSON ACTIONS
+            printf '%s' "$1" > "$PV_JSON"; : > "$ACTIONS"
+            reconcile "$1" >/dev/null 2>&1 || true
+            cat "$ACTIONS"
+          }
+          has()  { grep -q "$2" "$1" && echo yes || echo no; }
+          fail=0
+          check() { # name expect-patch expect-create actions-file
+            p=$(has "$4" PATCH); c=$(has "$4" CREATE)
+            if [ "$p" = "$2" ] && [ "$c" = "$3" ]; then
+              echo "PASS: $1 (patch=$p create=$c)"
+            else
+              echo "FAIL: $1 — want patch=$2 create=$3, got patch=$p create=$c"; fail=1
+            fi
+          }
+
+          run "$DYN"                > /tmp/a1; check "dynamic Retain steady -> add finalizer"       yes no /tmp/a1
+          run "$STAT"               > /tmp/a2; check "static Retain steady -> untouched"            no  no /tmp/a2
+          run "$(withfin "$STAT")"  > /tmp/a3; check "static w/ stray finalizer -> stripped"        yes no /tmp/a3
+          run "$(deleting "$(withfin "$DYN")")"  > /tmp/a4; check "dynamic deleting -> clone reclaim" yes yes /tmp/a4
+          run "$(deleting "$(withfin "$STAT")")" > /tmp/a5; check "static deleting -> NO clone (fix)"  yes no  /tmp/a5
+
+          exit "$fail"
