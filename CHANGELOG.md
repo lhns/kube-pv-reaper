@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- Base image `alpine:3.24.3` (was EOL 3.20; ships the ca-certificates that drop the
+  compromised emSign root) and kubectl v1.36.5, now verified against its published sha256.
 
 ## [0.1.5] - 2026-07-21
 ### Fixed
