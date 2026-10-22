@@ -63,6 +63,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A release created by hand first keeps its notes; only the chart is attached.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" kube-pv-reaper-*.tgz --clobber
+            exit 0
+          fi
           VER="${GITHUB_REF_NAME#v}"
           # Use this version's CHANGELOG.md section as the release body.
           # index()-based (literal) to avoid regex bracket-escaping pitfalls.

@@ -5,9 +5,17 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.6] - 2026-10-22
+### Security
+- Base image `alpine:3.24.3` (was the EOL 3.20). It ships `ca-certificates`
+  20261020-r0, which drops the emSign roots compromised in the October 2026
+  eMudhra intermediate CA key compromise. The reaper is a shell script around
+  `kubectl` and contains no Go code, so the Go fix does not apply.
+
 ### Changed
-- Base image `alpine:3.24.3` (was EOL 3.20; ships the ca-certificates that drop the
-  compromised emSign root) and kubectl v1.36.5, now verified against its published sha256.
+- kubectl v1.36.5 (was v1.31.4), now verified against its published sha256 when
+  the image is built (#2).
 
 ## [0.1.5] - 2026-07-21
 ### Fixed
