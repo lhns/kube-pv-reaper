@@ -1,19 +1,32 @@
-FROM alpine:3.24.3
+# The compiler runs natively ($BUILDPLATFORM) and cross-compiles, so no QEMU is needed (the
+# runtime stage has no RUN). The golang tag is go.mod's toolchain version; CI fails on a minor
+# mismatch, and the local setup-go action makes CI test with this exact Go.
+FROM --platform=$BUILDPLATFORM golang:1.26.11@sha256:4165ee6bf3b7811fd7b40373290405c83d0167dcb87ee5f29c427cdcef45ff8f AS builder
 
-# TARGETARCH is provided by buildx (amd64 / arm64).
+WORKDIR /workspace
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd/ cmd/
+COPY internal/ internal/
+
+# No defaults: a default overrides the per-platform value buildx sets, which once built every
+# platform for amd64. The :? guard fails a build that sets none (no BuildKit).
+ARG TARGETOS
 ARG TARGETARCH
-ARG KUBECTL_VERSION=v1.36.5
+ARG VERSION=dev
+ARG COMMIT=none
+ARG BUILD_DATE=unknown
 
-RUN apk add --no-cache jq curl ca-certificates \
- && KUBECTL_URL="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
- && curl -fsSLo /usr/local/bin/kubectl "${KUBECTL_URL}" \
- && echo "$(curl -fsSL "${KUBECTL_URL}.sha256")  /usr/local/bin/kubectl" | sha256sum -c - \
- && chmod +x /usr/local/bin/kubectl
+RUN : "${TARGETOS:?}" "${TARGETARCH:?}" && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${BUILD_DATE}" \
+      -o /workspace/manager ./cmd
 
-COPY reaper.sh /usr/local/bin/reaper.sh
-RUN chmod +x /usr/local/bin/reaper.sh
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
 
-# Only reads the mounted ServiceAccount token and calls the API — no local writes.
-USER 65534:65534
-
-ENTRYPOINT ["/bin/sh", "/usr/local/bin/reaper.sh"]
+WORKDIR /
+COPY --from=builder /workspace/manager /manager
+USER 65532:65532
+ENTRYPOINT ["/manager"]
