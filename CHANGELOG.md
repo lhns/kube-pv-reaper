@@ -6,8 +6,9 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 ### Security
-- kubectl v1.37.2 (was v1.36.5): the Go libraries inside v1.36.5 carried fixed HIGH CVEs
-  that the new Trivy image scan reports.
+- kubectl v1.37.2 (was v1.36.5), which carries fewer fixed HIGH CVEs in its bundled Go libraries.
+  The three left (x/net CVE-2026-78661 and CVE-2026-78669, x/text CVE-2026-56851) are in
+  `.trivyignore` until 2027-02-28: the reaper uses kubectl only as an API client.
 
 ## [0.1.6] - 2026-10-22
 ### Security
