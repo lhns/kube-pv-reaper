@@ -5,6 +5,9 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Security
+- kubectl v1.37.2 (was v1.36.5): the Go libraries inside v1.36.5 carried fixed HIGH CVEs
+  that the new Trivy image scan reports.
 
 ## [0.1.6] - 2026-10-22
 ### Security
