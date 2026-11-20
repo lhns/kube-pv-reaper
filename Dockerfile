@@ -2,7 +2,7 @@ FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c
 
 # TARGETARCH is provided by buildx (amd64 / arm64).
 ARG TARGETARCH
-ARG KUBECTL_VERSION=v1.36.5
+ARG KUBECTL_VERSION=v1.36.6
 
 RUN apk add --no-cache jq curl ca-certificates \
  && KUBECTL_URL="https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
