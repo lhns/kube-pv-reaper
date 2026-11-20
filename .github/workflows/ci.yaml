@@ -1,0 +1,238 @@
+# .github/workflows/ci.yaml -- the shared part, copied verbatim into each operator repo (SPEC.md).
+# The repo's own jobs (unit, envtest, chart, e2e lanes) stay alongside these and use the local
+# setup-go action. Only lines marked "# PER-REPO:" differ; SPEC.md has the values.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Callable, so the release gates on this same pipeline.
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A LITERAL group name: under workflow_call ${{ github.workflow }} is the caller's, so two called
+# workflows would share one group and cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}  # PER-REPO: a distinct literal per workflow file (ci-, e2e-, ...)
+  cancel-in-progress: true
+
+env:
+  BINARY: /usr/local/bin/kubectl  # PER-REPO: entrypoint binary inside the image
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  trivy-fs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trivy filesystem scan (sources)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          skip-dirs: 'docs'      # PER-REPO: oci-composer 'docs,test'
+
+  # Both platforms, pushed by digest to a throwaway registry and checked with the release's own
+  # script, so an arm64 break fails the PR rather than the release.
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:                 # PER-REPO: one entry per image
+          - image: kube-pv-reaper
+            build-args: ""
+    services:
+      registry:
+        image: registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+        ports: ['5000:5000']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # PER-REPO: pv-reaper only, its Dockerfile RUNs on the target platform:
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host   # the builder must reach the registry service on localhost
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.20.6
+      - name: Build both platforms, push by digest to the local registry
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          outputs: type=image,name=localhost:5000/${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      - name: Verify every platform's binary architecture
+        run: bash scripts/check-binary-arch.sh "localhost:5000/${{ matrix.image }}@${{ steps.build.outputs.digest }}" "$BINARY" "$PLATFORMS"
+      - name: Build amd64 for the scan (loaded)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: ci/${{ matrix.image }}:scan
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ci/${{ matrix.image }}:scan
+          trivyignores: .trivyignore
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+  # The check must be able to fail: an image whose arm64 platform carries an x86-64 binary, the
+  # shape of the bug it exists for, must be rejected with exit 1 on arm64 and nothing else.
+  arch-check-fails:
+    runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+        ports: ['5000:5000']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.20.6
+      - name: Build a mislabelled image
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bad"
+          cat > "$RUNNER_TEMP/bad/Dockerfile" <<'EOF'
+          FROM --platform=linux/amd64 busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec AS amd64
+          FROM scratch
+          ARG BINARY
+          COPY --from=amd64 /bin/busybox ${BINARY}
+          EOF
+          docker buildx build --platform "$PLATFORMS" --build-arg "BINARY=$BINARY" \
+            --output type=image,name=localhost:5000/mislabelled,push-by-digest=true,name-canonical=true,push=true \
+            --metadata-file "$RUNNER_TEMP/meta.json" "$RUNNER_TEMP/bad"
+          echo "REF=localhost:5000/mislabelled@$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/meta.json")" >> "$GITHUB_ENV"
+      - name: The check rejects it
+        run: |
+          set +e -uo pipefail
+          out=$(bash scripts/check-binary-arch.sh "$REF" "$BINARY" "$PLATFORMS" 2>&1); rc=$?
+          echo "$out"
+          # Exit 2 (tooling) or a failure on amd64 would prove nothing.
+          if [ "$rc" -eq 1 ] \
+              && grep -q "^ok   linux/amd64:" <<< "$out" \
+              && grep -q "^FAIL linux/arm64: .* has e_machine '3e 00', expected 'b7 00'" <<< "$out"; then
+            echo "OK: the check failed, and for the right reason"
+          else
+            echo "::error::check-binary-arch.sh did not reject an arm64 image holding an x86-64 binary (exit $rc)"
+            exit 1
+          fi
+
+  signal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image
+        run: docker build --build-arg TARGETARCH=amd64 -t kube-pv-reaper:test .
+
+      - name: SIGTERM is handled promptly (no PID-1 hang)
+        run: |
+          # Fake kubectl that blocks on the watch like a live cluster would, so
+          # the reaper is genuinely stuck in `kubectl get pv --watch` when signaled
+          # (the case the plain PID-1 shell used to ignore SIGTERM in).
+          cat > fake-kubectl <<'EOF'
+          #!/bin/sh
+          case "$*" in
+            *"get pv --watch"*) exec sleep 3600 ;;
+            *) echo '{}' ;;
+          esac
+          EOF
+          chmod 0755 fake-kubectl
+
+          docker run -d --name reaper \
+            -v "$PWD/fake-kubectl:/usr/local/bin/kubectl:ro" \
+            kube-pv-reaper:test
+          sleep 3   # let it enter the watch
+
+          start=$(date +%s)
+          docker stop -t 15 reaper >/dev/null       # SIGTERM, then SIGKILL after 15s
+          elapsed=$(( $(date +%s) - start ))
+
+          echo "--- container logs ---"; docker logs reaper 2>&1 | tail -3
+          docker rm reaper >/dev/null
+          echo "stopped in ${elapsed}s"
+          if [ "$elapsed" -le 5 ]; then
+            echo "PASS: SIGTERM handled promptly"
+          else
+            echo "FAIL: took ${elapsed}s — SIGTERM ignored (PID-1 hang)"
+            exit 1
+          fi
+
+  reconcile-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: reconcile manages dynamic PVs only, never reclaims static ones
+        run: |
+          set -eu
+          # Fake kubectl: `get -o json` returns the fixture PV; a bare `get pv`
+          # (clone existence probe) is "not found"; patch/create are recorded.
+          mkdir -p /tmp/bin
+          cat > /tmp/bin/kubectl <<'EOF'
+          #!/bin/sh
+          case "$1" in
+            get)    case "$*" in *"-o json"*) cat "$PV_JSON" ;; *) exit 1 ;; esac ;;
+            patch)  echo "PATCH $3"  >> "$ACTIONS" ;;
+            create) echo "CREATE $(cat | jq -r '.metadata.name')" >> "$ACTIONS" ;;
+            *) : ;;
+          esac
+          EOF
+          chmod +x /tmp/bin/kubectl
+          export PATH="/tmp/bin:$PATH"
+
+          # Load reconcile()/helpers without starting the watch loop.
+          export REAPER_SOURCE_ONLY=1
+          . ./reaper.sh
+
+          FIN=pv-reaper.lhns.de/reclaim-on-delete
+          DYN='{"metadata":{"name":"dyn","annotations":{"pv.kubernetes.io/provisioned-by":"rbd.csi.ceph.com"}},"spec":{"csi":{"driver":"rbd.csi.ceph.com","volumeHandle":"0001-real"},"persistentVolumeReclaimPolicy":"Retain","claimRef":{"apiVersion":"v1","kind":"PersistentVolumeClaim","namespace":"x","name":"c","uid":"u"},"storageClassName":"ceph-rbd","capacity":{"storage":"1Gi"},"accessModes":["ReadWriteOnce"],"volumeMode":"Filesystem"}}'
+          STAT='{"metadata":{"name":"stat"},"spec":{"csi":{"driver":"cephfs.csi.ceph.com","volumeHandle":"my-static"},"persistentVolumeReclaimPolicy":"Retain","claimRef":{"apiVersion":"v1","kind":"PersistentVolumeClaim","namespace":"x","name":"c","uid":"u"},"storageClassName":"","capacity":{"storage":"1Gi"},"accessModes":["ReadOnlyMany"],"volumeMode":"Filesystem"}}'
+          withfin() { printf '%s' "$1" | jq -c --arg f "$FIN" '.metadata.finalizers=[$f]'; }
+          deleting() { printf '%s' "$1" | jq -c '.metadata.deletionTimestamp="2026-01-01T00:00:00Z"'; }
+
+          run() { # $1=pv-json -> prints recorded actions
+            PV_JSON=$(mktemp); ACTIONS=$(mktemp); export PV_JSON ACTIONS
+            printf '%s' "$1" > "$PV_JSON"; : > "$ACTIONS"
+            reconcile "$1" >/dev/null 2>&1 || true
+            cat "$ACTIONS"
+          }
+          has()  { grep -q "$2" "$1" && echo yes || echo no; }
+          fail=0
+          check() { # name expect-patch expect-create actions-file
+            p=$(has "$4" PATCH); c=$(has "$4" CREATE)
+            if [ "$p" = "$2" ] && [ "$c" = "$3" ]; then
+              echo "PASS: $1 (patch=$p create=$c)"
+            else
+              echo "FAIL: $1 — want patch=$2 create=$3, got patch=$p create=$c"; fail=1
+            fi
+          }
+
+          run "$DYN"                > /tmp/a1; check "dynamic Retain steady -> add finalizer"       yes no /tmp/a1
+          run "$STAT"               > /tmp/a2; check "static Retain steady -> untouched"            no  no /tmp/a2
+          run "$(withfin "$STAT")"  > /tmp/a3; check "static w/ stray finalizer -> stripped"        yes no /tmp/a3
+          run "$(deleting "$(withfin "$DYN")")"  > /tmp/a4; check "dynamic deleting -> clone reclaim" yes yes /tmp/a4
+          run "$(deleting "$(withfin "$STAT")")" > /tmp/a5; check "static deleting -> NO clone (fix)"  yes no  /tmp/a5
+
+          exit "$fail"
