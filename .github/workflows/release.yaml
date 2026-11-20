@@ -25,11 +25,11 @@ permissions:
 
 env:
   REGISTRY: ghcr.io/lhns
-  IMAGE: kube-pv-reaper
-  BINARY: /usr/local/bin/kubectl
-  CHART_NAME: kube-pv-reaper
-  CHART_PATH: chart
-  TAG_PREFIX: ""
+  IMAGE: kube-pv-reaper            # PER-REPO: image name
+  BINARY: /usr/local/bin/kubectl   # PER-REPO: entrypoint binary inside the image
+  CHART_NAME: kube-pv-reaper       # PER-REPO: `name` in Chart.yaml
+  CHART_PATH: chart                # PER-REPO: chart directory
+  TAG_PREFIX: ""                   # PER-REPO: "v" or ""; release image tag and appVersion are <TAG_PREFIX>X.Y.Z
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
@@ -44,8 +44,9 @@ jobs:
 
   release:
     needs: [ci]                         # PER-REPO: the gate jobs
-    # always(): skipped gates (dev mode) must not skip this job; failed or cancelled ones still block it.
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    # Skipped gates (dev mode) must not skip this job; failed or cancelled ones still block it.
+    # !cancelled(), not always(): always() is never cancelled, so a superseded dev run would keep tagging.
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write   # the GitHub Release

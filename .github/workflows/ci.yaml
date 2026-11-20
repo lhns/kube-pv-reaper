@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BINARY: /usr/local/bin/kubectl
+  BINARY: /usr/local/bin/kubectl  # PER-REPO: entrypoint binary inside the image
   PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
-          skip-dirs: 'docs'
+          skip-dirs: 'docs'      # PER-REPO: oci-composer 'docs,test'
 
   # Both platforms, pushed by digest to a throwaway registry and checked with the release's own
   # script, so an arm64 break fails the PR rather than the release.
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
+        include:                 # PER-REPO: one entry per image
           - image: kube-pv-reaper
             build-args: ""
     services:
