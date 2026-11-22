@@ -1,6 +1,6 @@
 # 0007 — Distribution: multi-arch image + Helm chart to GHCR, CHANGELOG-driven releases
 
-Status: Accepted
+Status: Accepted. Dev-build versioning superseded by [0010](0010-signed-releases-dev-builds-from-every-branch.md).
 
 ## Context
 

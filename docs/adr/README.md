@@ -19,3 +19,4 @@ describes operationally.
 7. [0007 — Distribution: multi-arch image + Helm chart to GHCR, CHANGELOG-driven releases](0007-distribution-image-and-chart.md)
 8. [0008 — Automate finalizer cleanup on uninstall via a pre-delete hook](0008-uninstall-finalizer-cleanup-hook.md)
 9. [0009 — Manage only dynamically-provisioned volumes (skip static PVs)](0009-dynamically-provisioned-only.md)
+10. [0010 — Signed releases; dev builds from every branch](0010-signed-releases-dev-builds-from-every-branch.md)

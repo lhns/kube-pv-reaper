@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-22
+### Changed
+- Releases sign the image and chart with cosign keyless and attest an SPDX image SBOM; the
+  GitHub Release also carries the SBOM and checksums (ADR 0010). Each platform's `kubectl` is
+  checked for the right architecture before anything is tagged.
+- Dev builds are published, unsigned, from every non-Dependabot branch as `0.0.0-dev.g<sha7>`
+  (was `0.0.0-sha-<short>`, from `main` only).
+
+### Security
+- kubectl v1.37.2 (was v1.36.5), for fixed HIGH CVEs in its bundled Go libraries. kubectl's
+  version skew policy covers API servers v1.36 to v1.38. Three CVEs it still carries are not
+  reachable from the reaper's API-client use and are accepted in `.trivyignore` until 2027-02-28.
+
 ## [0.1.6] - 2026-10-22
 ### Security
 - Base image `alpine:3.24.3` (was the EOL 3.20). It ships `ca-certificates`

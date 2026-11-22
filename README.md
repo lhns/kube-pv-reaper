@@ -111,8 +111,10 @@ is the behavior this tool exists to avoid.
 
 ## Releases
 
-- Push to `main` → dev build: image `:sha-<short>`, chart `0.0.0-sha-<short>`.
-- Tag `vX.Y.Z` → release: image `:X.Y.Z` + `:latest`, chart `X.Y.Z`.
+- Push to any branch (not Dependabot's) → dev build: image `0.0.0-dev.g<sha7>`, `:sha-<sha7>`
+  and the branch name, chart `0.0.0-dev.g<sha7>`. Not signed.
+- Tag `vX.Y.Z` → release: image `:X.Y.Z` + `:latest`, chart `X.Y.Z`, both signed with cosign
+  keyless (GitHub OIDC), plus an SPDX image SBOM ([ADR 0010](docs/adr/0010-signed-releases-dev-builds-from-every-branch.md)).
 
 ## License
 
