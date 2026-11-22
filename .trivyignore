@@ -1,6 +1,7 @@
-# Go libraries inside the downloaded kubectl (v1.37.2 still ships x/net v0.57.0, x/text v0.40.0).
-# The reaper runs kubectl only as an API client (get/patch/delete); the affected HTML parser and
-# HTTP/2 server paths are never reached. Expiring, so the scan fails again once a newer kubectl exists.
+# HIGH CVEs in the Go libraries bundled in kubectl v1.37.2 (x/net v0.57.0, x/text v0.40.0). The
+# reaper runs kubectl only as a client of the cluster's own API server: it parses no HTML (x/net/html)
+# or PRECIS nicknames (x/text), and the HTTP/2 SETTINGS flood needs a hostile peer. Expiring, so the
+# scan fails again and a newer kubectl gets checked.
 CVE-2026-78661 exp:2027-02-28
 CVE-2026-78669 exp:2027-02-28
 CVE-2026-56851 exp:2027-02-28

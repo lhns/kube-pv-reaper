@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.7] - 2026-11-22
 ### Changed
 - Releases sign the image and chart with cosign keyless and attest an SPDX image SBOM; the
   GitHub Release also carries the SBOM and checksums (ADR 0010). Each platform's `kubectl` is
@@ -13,9 +15,9 @@ All notable changes to this project are documented here. The format is based on
   (was `0.0.0-sha-<short>`, from `main` only).
 
 ### Security
-- kubectl v1.37.2 (was v1.36.5), which carries fewer fixed HIGH CVEs in its bundled Go libraries.
-  The three left (x/net CVE-2026-78661 and CVE-2026-78669, x/text CVE-2026-56851) are in
-  `.trivyignore` until 2027-02-28: the reaper uses kubectl only as an API client.
+- kubectl v1.37.2 (was v1.36.5), for fixed HIGH CVEs in its bundled Go libraries. kubectl's
+  version skew policy covers API servers v1.36 to v1.38. Three CVEs it still carries are not
+  reachable from the reaper's API-client use and are accepted in `.trivyignore` until 2027-02-28.
 
 ## [0.1.6] - 2026-10-22
 ### Security

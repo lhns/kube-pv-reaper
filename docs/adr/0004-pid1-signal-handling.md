@@ -16,7 +16,7 @@ ungraceful on every deploy.
 Install `trap 'exit 0' TERM INT`, and run the watch loop **backgrounded**
 (`{ … } &`) followed by `wait`. `wait` is interruptible by a trapped signal, so
 SIGTERM fires the trap promptly; PID 1 exiting tears down the orphaned
-`kubectl`/`jq` children. A CI test (`test.yml`) builds the image and asserts that
+`kubectl`/`jq` children. A CI test (`ci.yaml`) builds the image and asserts that
 `docker stop` returns quickly against a blocking fake `kubectl`, so the behavior
 can't silently regress.
 
