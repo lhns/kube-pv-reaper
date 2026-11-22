@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- Releases sign the image and chart with cosign keyless and attest an SPDX image SBOM; the
+  GitHub Release also carries the SBOM and checksums (ADR 0010). Each platform's `kubectl` is
+  checked for the right architecture before anything is tagged.
+- Dev builds are published, unsigned, from every non-Dependabot branch as `0.0.0-dev.g<sha7>`
+  (was `0.0.0-sha-<short>`, from `main` only).
+
 ### Security
 - kubectl v1.37.2 (was v1.36.5), which carries fewer fixed HIGH CVEs in its bundled Go libraries.
   The three left (x/net CVE-2026-78661 and CVE-2026-78669, x/text CVE-2026-56851) are in
